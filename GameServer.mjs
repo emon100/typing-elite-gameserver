@@ -59,8 +59,11 @@ inputStream.on('data', raw => {
 
     if (info.includes("JOIN")) {
         allMsgs.forEach(v => outside.write(`${id}:${v}\n`));
-        msg+=` ${randomWord()} 0 0`;
+        msg+=` ${randomWord()}`
+        outside.write(":"+msg+'\n');
+        outside.write(`${id}:${id}:SPAWN 0 0\n`);
+    }else{
+        outside.write(`:${msg}\n`)
     }
     allMsgs.push(msg);
-    outside.write(`:${msg}\n`)
 });
