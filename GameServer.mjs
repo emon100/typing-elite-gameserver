@@ -11,11 +11,13 @@ const rl = readline.createInterface({
     prompt: 'GAMESERVER> '
 });
 
-
 rl.on('line', (line) => {
     switch (line.trim()) {
+        case 'r':
+            createServer();
+            break;
         case 'c':
-            allMsgs=[];
+            allMsgs = [];
             break;
         default:
             console.log(`Say what? I might have heard '${line.trim()}'`);
@@ -27,43 +29,51 @@ rl.on('line', (line) => {
     process.exit(0);
 });
 
-const outside = net.createConnection(9909);
 
-const inputStream = outside.pipe(new GameProtocolTransformer);
+function createServer() {
+    const outside = net.createConnection(9909);
 
-outside.on('error', err => {
-    console.log(err);
-    inputStream.end();
-});
+    const inputStream = outside.pipe(new GameProtocolTransformer);
 
-outside.on('connect', () => {
-    console.log("GameServer connected");
-    rl.prompt();
-});
+    outside.on('error', err => {
+        console.log(err);
+        inputStream.end();
+    });
 
-function randomWord(){
-    let str = "";
-    for(let i=0;i<3;++i){
-        str+=String.fromCharCode(97+Math.floor(Math.random()*26))
+    outside.on('connect', () => {
+        console.log("GameServer connected");
+        rl.prompt();
+    });
+
+    function randomWord() {
+        let str = "";
+        for (let i = 0; i < 3; ++i) {
+            str += String.fromCharCode(97 + Math.floor(Math.random() * 26))
+        }
+        return str;
     }
-    return str;
+
+
+    inputStream.on('data', raw => {
+        const msg = "" + raw.toString();
+        console.log(msg);
+        const colonIdx = msg.indexOf(':');
+        const id = msg.slice(0, colonIdx);
+        const info = msg.slice(colonIdx + 1);
+
+        if (info.includes("JOIN")) {
+            allMsgs.forEach(v => outside.write(`${id}:${v}\n`));
+            const joinMsg = msg + ` ${randomWord()}`
+            outside.write(":" + joinMsg + '\n');
+            allMsgs.push(msg);
+            const spawnMsg = `${id}:SPAWN 0 0`;
+            outside.write(":" + spawnMsg + '\n');
+            allMsgs.push(spawnMsg);
+        } else {
+            outside.write(`:${msg}\n`)
+            allMsgs.push(msg);
+        }
+    });
 }
 
-
-inputStream.on('data', raw => {
-    let msg = "" + raw.toString();
-    console.log(msg);
-    const colonIdx = msg.indexOf(':');
-    const id = msg.slice(0, colonIdx);
-    const info = msg.slice(colonIdx + 1);
-
-    if (info.includes("JOIN")) {
-        allMsgs.forEach(v => outside.write(`${id}:${v}\n`));
-        msg+=` ${randomWord()}`
-        outside.write(":"+msg+'\n');
-        outside.write(`${id}:${id}:SPAWN 0 0\n`);
-    }else{
-        outside.write(`:${msg}\n`)
-    }
-    allMsgs.push(msg);
-});
+createServer();
