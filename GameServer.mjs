@@ -27,29 +27,39 @@ rl.on('line', (line) => {
     process.exit(0);
 });
 
-const outside = net.createConnection(9909)
+const outside = net.createConnection(9909);
 
-const inputStream = outside.pipe(new GameProtocolTransformer)
+const inputStream = outside.pipe(new GameProtocolTransformer);
 
 outside.on('error', err => {
     console.log(err);
     inputStream.end();
 });
+
 outside.on('connect', () => {
     console.log("GameServer connected");
     rl.prompt();
 });
 
+function randomWord(){
+    let str = "";
+    for(let i=0;i<3;++i){
+        str+=String.fromCharCode(97+Math.floor(Math.random()*26))
+    }
+    return str;
+}
+
 
 inputStream.on('data', raw => {
-    const msg = "" + raw.toString();
+    let msg = "" + raw.toString();
     console.log(msg);
     const colonIdx = msg.indexOf(':');
     const id = msg.slice(0, colonIdx);
     const info = msg.slice(colonIdx + 1);
 
-    if (info.includes("Hello")) {
+    if (info.includes("JOIN")) {
         allMsgs.forEach(v => outside.write(`${id}:${v}\n`));
+        msg+=` ${randomWord()} 0 0`;
     }
     allMsgs.push(msg);
     outside.write(`:${msg}\n`)

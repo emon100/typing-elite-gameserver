@@ -32,7 +32,7 @@ room.on('serverJoined', function (server) {
 
 room.on('playerJoined', function (id, client) {
     this.clients[id] = client;
-    room.emit('send2server', `${id}:Hello 0,0`);
+    room.emit('send2server', `${id}:JOIN`);
 });
 
 room.on('broadcast', function (msg) {
@@ -53,52 +53,38 @@ room.on('send2server', function (msg) {
 
 room.on('leave', function (id) {
     delete this.clients[id];
-    this.emit('broadcast', `${id}:left.`);
+    this.emit('send2server', `${id}:LEAVE`);
 });
 
-function clientIdIsValid(client, id) {
-    if (id.length >= 10) {
-        client.write("Username too long. Please reenter:\n")
-        return false
-    }
-    if (room.clients[id]) {
-        client.write("Username has existed:\n");
-        return false;
-    }
-    return true;
+function auth(authData){
+    return authData;
 }
 
 const gatewayServer = net.createServer(client => {
     const protoStream = client.pipe(new GameProtocolTransformer);
 
-    let clientId;
-    let clientStatus = 'registering';
 
-    function tempFunc(data) {
-        const dataStr = data.toString();
-        if (clientStatus === 'registering') {
-            //第一次client来信息
-            clientId = dataStr;
-            if (!clientIdIsValid(client, clientId)) {
-                return;
-            }
-            //client.write(`Welcome, ${clientId}\n`);
-
-            clientStatus = 'logined';
-            room.emit('playerJoined', clientId, client);
-            client.on('close', () => {
-                room.emit('leave', clientId);
-            });
-        } else if (clientStatus === 'logined') {//第二次及之后的client来信息
-            const msg = `${clientId}:${data}`;
-            room.emit('send2server', msg);
-            //room.clients[clientId].write(msg);
-            return;
-        } else {
-            throw `Bad clientStatus:${clientStatus}`;
-        }
+    let handler = handleFirstTime;
+    function temp(data){
+        handler(data);
     }
-    protoStream.on('data', tempFunc);//每个client来信息都会调用tempFunc
+
+    let clientId=null;
+    function handleFirstTime(data) {//第一次client来信息
+        const dataStr = data.toString();
+        clientId = auth(dataStr);
+        room.emit('playerJoined', clientId, client);
+        client.on('close', () => {
+            room.emit('leave', clientId);
+        });
+        handler = handleSecondTime;
+    }
+    function handleSecondTime(data){
+        const dataStr = data.toString();
+        const msg = `${clientId}:${dataStr}`;
+        room.emit('send2server', msg);
+    }
+    protoStream.on('data', temp);//每个client来信息都会调用tempFunc
 
     client.on('error', err => {
         protoStream.end();
@@ -131,6 +117,12 @@ const gameServerHandler = net.createServer(server => {
             const info = msg.slice(colonIdx + 1);
             room.emit('send2sb', id, info);
         }
+    });
+
+    server.on('error',(err)=>{
+        inputStream.end();
+        console.log(err);
+        throw err;
     });
 });
 
