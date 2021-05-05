@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import {GameProtocolTransformer} from './GameProtocolTransformer.mjs';
+import {GameProtocolReadTransformer} from './GameProtocolTransformer.mjs';
 import * as net from 'net';
 const room = new EventEmitter();
 /*
@@ -61,7 +61,7 @@ function auth(authData){
 }
 
 const gatewayServer = net.createServer(client => {
-    const protoStream = client.pipe(new GameProtocolTransformer);
+    const protoStream = client.pipe(new GameProtocolReadTransformer);
 
 
     let handler = handleFirstTime;
@@ -105,7 +105,7 @@ const gameServerHandler = net.createServer(server => {
     room.emit('serverJoined', server);
     gatewayServer.listen(8888);
 
-    const inputStream = server.pipe(new GameProtocolTransformer);
+    const inputStream = server.pipe(new GameProtocolReadTransformer);
     inputStream.on('data', raw => {
         const msg = '' + raw.toString();
         console.log(msg);
@@ -121,8 +121,8 @@ const gameServerHandler = net.createServer(server => {
 
     server.on('error',(err)=>{
         inputStream.end();
+        gatewayServer.close();
         console.log(err);
-        throw err;
     });
 });
 
