@@ -15,6 +15,7 @@
     "jest": "^26.6.3"
   },
   "dependencies": {
-    "duplexify": "^4.1.1"
+    "duplexify": "^4.1.1",
+    "jsonwebtoken": "^8.5.1"
   }
 }

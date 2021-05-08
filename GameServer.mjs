@@ -1,8 +1,7 @@
 import {ProtoStream} from './GameProtocolTransformer.mjs'
 import * as net from 'net';
 import * as readline from 'readline';
-
-
+/*
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -26,6 +25,7 @@ rl.on('line', (line) => {
     console.log('Have a great day!');
     process.exit(0);
 });
+*/
 
 function randomWord() {
     let str = "";
@@ -63,8 +63,8 @@ function handleKill(stream, msg, info) {
     }, 1000);
 }
 
-function createServer() {
-    const outside = net.createConnection(9909);
+export function createGameServer(port) {
+    const outside = net.createConnection(port);
 
     const stream = ProtoStream(outside);//outside.pipe(new GameProtocolTransformer);
 
@@ -75,10 +75,7 @@ function createServer() {
 
     outside.on('connect', () => {
         console.log("GameServer connected");
-        rl.prompt();
     });
-
-
 
     stream.on('data', raw => {
         const msg = "" + raw.toString();
@@ -96,7 +93,5 @@ function createServer() {
             allMsgs.push(msg);
         }
     });
+    return outside;
 }
-
-createServer();
-

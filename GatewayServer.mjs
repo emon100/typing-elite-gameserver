@@ -1,7 +1,13 @@
 import EventEmitter from 'events';
 import {GameProtocolReadTransformer} from './GameProtocolTransformer.mjs';
 import * as net from 'net';
-const room = new EventEmitter();
+import jwt from 'jsonwebtoken'
+const {verify} = jwt;
+
+export const room = new EventEmitter();
+room.clientsCount = 0;
+
+const secret = 'nodeauthsecret';
 /*
  * We accept messages like this:
  *  PlayerID: Info\n
@@ -32,6 +38,8 @@ room.on('serverJoined', function (server) {
 
 room.on('playerJoined', function (id, client) {
     this.clients[id] = client;
+    this.clientsCount += 1;
+    room.emit('send2sb',id,`:VERIFY ${id}`);
     room.emit('send2server', `${id}:JOIN`);
 });
 
@@ -53,10 +61,12 @@ room.on('send2server', function (msg) {
 
 room.on('leave', function (id) {
     delete this.clients[id];
+    this.clientsCount -= 1;
     this.emit('send2server', `${id}:LEAVE`);
 });
 
-function auth(authData){
+function auth(authData) {
+    //const {payload} = await
     return authData;
 }
 
@@ -65,21 +75,28 @@ const gatewayServer = net.createServer(client => {
 
 
     let handler = handleFirstTime;
-    function temp(data){
+    function temp(data) {
         handler(data);
     }
 
-    let clientId=null;
+    let clientId = null;
     function handleFirstTime(data) {//第一次client来信息
         const dataStr = data.toString();
-        clientId = auth(dataStr);
-        room.emit('playerJoined', clientId, client);
-        client.on('close', () => {
-            room.emit('leave', clientId);
-        });
-        handler = handleSecondTime;
+        try{
+            const payload = verify(dataStr,secret)
+            console.log(payload);
+            clientId = payload._id;
+            room.emit('playerJoined', clientId, client);
+            client.on('close', () => {
+                room.emit('leave', clientId);
+            });
+            handler = handleSecondTime;
+        }catch(err){
+            console.log(err);
+            client.end('Authentication failed');
+        }
     }
-    function handleSecondTime(data){
+    function handleSecondTime(data) {
         const dataStr = data.toString();
         const msg = `${clientId}:${dataStr}`;
         room.emit('send2server', msg);
@@ -96,34 +113,36 @@ const gatewayServer = net.createServer(client => {
  * 1. Make sure server for gameServer is established.
  * 2. Creating gatewayServer for clients
  */
-const gameServerHandler = net.createServer(server => {
-    if (gatewayServer.listening) {
-        console.log(`Bad server: ${server.remoteAddress}`);
-        return;
-    }
-    console.log('Server Created');
-    room.emit('serverJoined', server);
-    gatewayServer.listen(8888);
-
-    const inputStream = server.pipe(new GameProtocolReadTransformer);
-    inputStream.on('data', raw => {
-        const msg = '' + raw.toString();
-        console.log(msg);
-        if (msg.charAt(0) == ':') {
-            room.emit('broadcast', msg.slice(1));
-        } else {
-            const colonIdx = msg.indexOf(':');
-            const id = msg.slice(0, colonIdx);
-            const info = msg.slice(colonIdx + 1);
-            room.emit('send2sb', id, info);
+export function gameServerHandler(portForClients, portForGameserver) {
+    const gameServerListener = net.createServer(server => {
+        if (gatewayServer.listening) {
+            console.log(`Bad server: ${server.remoteAddress}`);
+            return;
         }
-    });
+        console.log('Server Created');
+        room.emit('serverJoined', server);
+        gatewayServer.listen(portForClients);
 
-    server.on('error',(err)=>{
-        inputStream.end();
-        gatewayServer.close();
-        console.log(err);
-    });
-});
+        const inputStream = server.pipe(new GameProtocolReadTransformer);
+        inputStream.on('data', raw => {
+            const msg = '' + raw.toString();
+            console.log(msg);
+            if (msg.charAt(0) == ':') {
+                room.emit('broadcast', msg.slice(1));
+            } else {
+                const colonIdx = msg.indexOf(':');
+                const id = msg.slice(0, colonIdx);
+                const info = msg.slice(colonIdx + 1);
+                room.emit('send2sb', id, info);
+            }
+        });
 
-gameServerHandler.listen(9909);
+        server.on('error', (err) => {
+            inputStream.end();
+            gatewayServer.close();
+            console.log(err);
+        });
+
+    }).listen(portForGameserver);
+    return {gameServerListener, gatewayServer}
+}
